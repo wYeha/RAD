@@ -1,0 +1,33 @@
+CREATE TABLE IF NOT EXISTS Department (
+	name VARCHAR(50) NOT NULL PRIMARY KEY ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Category (
+	name VARCHAR(50) NOT NULL PRIMARY KEY ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Plan (
+	department VARCHAR(50) references Department(name) NOT NULL,
+	date DATE NOT NULL,
+	summ numeric(10,2) NOT NULL,
+	primary key(department, date)
+);
+
+CREATE TABLE IF NOT EXISTS PlanInfo (
+	category VARCHAR(50) references Category(name) primary key NOT NULL,
+	summ numeric(10,2) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Report (
+	department VARCHAR(50) references Department(name) NOT NULL,
+	date DATE NOT NULL,
+	month VARCHAR(10) NOT NULL,
+	primary key(department, month)
+);
+
+CREATE TABLE IF NOT EXISTS ReportInfo (
+	category VARCHAR(50) references Category(name) NOT NULL,
+	expense VARCHAR(50) NOT NULL,
+	summ numeric(10,2) NOT NULL,
+	primary key(category, expense)
+);
