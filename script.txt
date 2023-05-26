@@ -1,0 +1,139 @@
+CREATE TABLE IF NOT EXISTS Department (
+	name VARCHAR(50) NOT NULL primary key
+);
+
+CREATE TABLE IF NOT EXISTS Category (
+	name VARCHAR(50) NOT NULL PRIMARY KEY
+);
+
+CREATE TABLE IF NOT EXISTS Plan (
+	id SERIAL,
+	department VARCHAR(50) references Department(name) ON DELETE CASCADE ON UPDATE CASCADE,
+	year integer NOT NULL,
+	summ integer DEFAULT 100,
+	primary key(id, department, year)
+);
+
+CREATE TABLE IF NOT EXISTS PlanInfo (
+	id SERIAL,
+	department VARCHAR(50) references Department(name) ON DELETE CASCADE ON UPDATE CASCADE,
+	category VARCHAR(50) references Category(name) ON DELETE CASCADE ON UPDATE CASCADE,
+	year integer NOT NULL,
+	summ integer DEFAULT 0,
+	PRIMARY KEY(department, category, year)
+);
+
+CREATE TABLE IF NOT EXISTS ReportInfo (
+	category VARCHAR(50) references Category(name) ON DELETE CASCADE ON UPDATE CASCADE,
+	expense VARCHAR(50) NOT NULL ,
+	summ integer DEFAULT 0,
+	primary key(expense)
+);
+
+CREATE TABLE IF NOT EXISTS Report (
+	id SERIAL primary key,
+	department VARCHAR(50) references Department(name) ON DELETE CASCADE ON UPDATE CASCADE,
+	year integer NOT NULL,
+	month VARCHAR(10) NOT NULL,
+	expense VARCHAR(50) references ReportInfo(expense) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+insert into Department values ('Отдел1'), ('Отдел2');
+insert into Category values ('Статья1'), ('Статья2');
+INSERT INTO PlanInfo (id, Department, category, year, summ)
+VALUES
+(1, 'Отдел1', 'Статья1', 22, 0),
+(2, 'Отдел2', 'Статья2', 23, 0),
+(3, 'Отдел1', 'Статья1', 23, 0),
+(4, 'Отдел2', 'Статья2', 22, 0),
+(5, 'Отдел1', 'Статья2', 24, 0),
+(6, 'Отдел2', 'Статья1', 24, 0);
+INSERT INTO ReportInfo (category, expense, summ) VALUES
+('Статья1', 'Трата1', 200),
+('Статья2', 'Трата3', 150),
+('Статья1', 'Трата2', 250),
+('Статья2', 'Трата4', 300);
+INSERT INTO ReportInfo (category, expense, summ) VALUES ('Статья2', 'Трата5', 300);
+
+--опустошение
+TRUNCATE TABLE Plan CASCADE;
+TRUNCATE TABLE PlanInfo CASCADE;
+TRUNCATE TABLE Report CASCADE;
+TRUNCATE TABLE ReportInfo CASCADE;
+-------------
+
+drop table ReportInfo, Report
+
+select * from PlanInfo
+
+---триггер изменения суммы в PlanInfo
+CREATE OR REPLACE FUNCTION update_planinfo_summ() RETURNS TRIGGER AS $$
+DECLARE
+    report_info_summ numeric;
+BEGIN
+    SELECT summ INTO report_info_summ FROM ReportInfo WHERE expense = NEW.expense;
+    IF FOUND THEN
+        UPDATE PlanInfo SET summ = summ + report_info_summ
+        WHERE Department = NEW.Department AND year = NEW.year
+        AND category = (SELECT category FROM ReportInfo WHERE expense = NEW.expense);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE PLPGSQL;
+
+CREATE TRIGGER update_planinfo_summ_trigger
+AFTER INSERT ON Report
+FOR EACH ROW
+EXECUTE FUNCTION update_planinfo_summ();
+---------------------------------
+
+---триггер изменения суммы в Plan
+CREATE OR REPLACE FUNCTION update_plan_summ() RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE Plan
+    SET summ = summ + (
+        SELECT summ FROM ReportInfo
+        WHERE ReportInfo.expense = NEW.expense
+    )
+    WHERE year = NEW.year and department = NEW.department;
+
+    IF NOT FOUND THEN
+        INSERT INTO Plan (id, department, year, summ)
+        SELECT nextval('plan_id_seq'), NEW.department, NEW.year, (
+            SELECT summ FROM ReportInfo
+            WHERE ReportInfo.expense = NEW.expense
+        )
+        WHERE NOT EXISTS (
+            SELECT 1 FROM Plan
+            WHERE year = NEW.year and department = NEW.department
+        );
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_plan_trigger
+AFTER INSERT ON Report
+FOR EACH ROW
+EXECUTE FUNCTION update_plan_summ();
+----------------------------------
+
+drop trigger PlanInfo1 on ReportInfo
+
+select * from planinfo;
+
+SELECT
+  Report.department,
+  Report.year,
+  ReportInfo.category,
+  SUM(ReportInfo.summ) AS сумма_трат
+FROM
+  Report
+  JOIN ReportInfo ON Report.expense = ReportInfo.expense
+WHERE Report.department = 'Отдел1' and Report.year = 22
+GROUP BY
+  Report.department,
+  Report.year,
+  ReportInfo.category;
